@@ -347,6 +347,37 @@ class SingleArm(Manipulator):
                 active=active,
             )
 
+        # ---- Tactile sensor observables (only if gripper has tactile sensors) ----
+        if self.has_gripper and hasattr(self.gripper, 'tactile_sensor_names'):
+            from robosuite.utils.tactile_utils import reshape_tactile_reading
+
+            tactile_names_dict = self.gripper.tactile_sensor_names
+            grid_shape = self.gripper.tactile_grid_shape
+            rows, cols = grid_shape
+
+            for side, raw_names in tactile_names_dict.items():
+                # Build prefixed sensor names for MuJoCo lookup
+                prefixed_names = [f"{self.gripper.naming_prefix}{n}" for n in raw_names]
+                obs_name = f"{pf}tactile_{side}"
+
+                # Use closure to capture the current value of prefixed_names and grid_shape
+                def _make_tactile_sensor(p_names, r, c):
+                    @sensor(modality="tactile")
+                    def tactile_obs(obs_cache):
+                        readings = np.array([
+                            self.get_sensor_measurement(sn)[0] for sn in p_names
+                        ])
+                        return reshape_tactile_reading(readings, rows=r, cols=c)
+                    return tactile_obs
+
+                tactile_sensor_fn = _make_tactile_sensor(prefixed_names, rows, cols)
+                observables[obs_name] = Observable(
+                    name=obs_name,
+                    sensor=tactile_sensor_fn,
+                    sampling_rate=self.control_freq,
+                    active=True,
+                )
+
         return observables
 
     @property
